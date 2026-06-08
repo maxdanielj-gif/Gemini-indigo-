@@ -39,7 +39,8 @@ const LiveScreen: React.FC = () => {
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const nextStartTimeRef = useRef(0);
-  const liveTranscriptRef = useRef('');
+  const liveTranscriptRef = useRef('');  // Gemini's words
+  const userTranscriptRef = useRef('');   // User's spoken words
 
   useEffect(() => {
     return () => {
@@ -103,6 +104,12 @@ const LiveScreen: React.FC = () => {
     setError(null);
     liveTranscriptRef.current = '';
     try {
+      // Create AudioContext early so incoming audio chunks are never dropped
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext({ sampleRate: 24000 });
+      audioCtxRef.current = ctx;
+      nextStartTimeRef.current = 0;
+
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${proto}//${window.location.host}/api/live`;
       const ws = new WebSocket(wsUrl);
@@ -135,9 +142,23 @@ const LiveScreen: React.FC = () => {
           if (msg.text && msg.role === 'model') {
             liveTranscriptRef.current += msg.text;
           }
+          if (msg.text && msg.role === 'user') {
+            userTranscriptRef.current += msg.text;
+          }
           if (msg.interrupted) {
+             // Stop current playback immediately and reset the audio pipeline
+             if (audioCtxRef.current) {
+               audioCtxRef.current.close();
+               const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+               audioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+             }
              audioQueueRef.current = [];
-             nextStartTimeRef.current = 0; // reset
+             isPlayingRef.current = false;
+             nextStartTimeRef.current = 0;
+             if (userTranscriptRef.current) {
+               addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current, timestamp: Date.now() });
+               userTranscriptRef.current = '';
+             }
              if (liveTranscriptRef.current) {
                addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current, timestamp: Date.now() });
                liveTranscriptRef.current = '';
@@ -151,6 +172,10 @@ const LiveScreen: React.FC = () => {
       ws.onclose = () => {
         setIsConnected(false);
         stopRecording();
+        if (userTranscriptRef.current) {
+          addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current, timestamp: Date.now() });
+          userTranscriptRef.current = '';
+        }
         if (liveTranscriptRef.current) {
           addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current, timestamp: Date.now() });
           liveTranscriptRef.current = '';
@@ -163,13 +188,10 @@ const LiveScreen: React.FC = () => {
 
   const startRecording = async () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioContext({ sampleRate: 16000 });
-      audioCtxRef.current = ctx;
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
+      const ctx = audioCtxRef.current!;
       const source = ctx.createMediaStreamSource(stream);
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
