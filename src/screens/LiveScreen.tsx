@@ -119,7 +119,8 @@ const LiveScreen: React.FC = () => {
         const historyText = chatHistory.length > 0 
           ? `\n\nPrevious conversation:\n${chatHistory.map(m => m.role + ': ' + m.content).join('\n')}`
           : '';
-        const instruction = `You are ${aiProfile.name}. You must stay in character. Personality: ${aiProfile.personality}. Appearance: ${aiProfile.appearance}.${historyText}`;
+        const styleNote = aiProfile.geminiTtsStyle ? ` Speaking style: ${aiProfile.geminiTtsStyle}.` : '';
+        const instruction = `You are ${aiProfile.name}. You must stay in character. Personality: ${aiProfile.personality}. Appearance: ${aiProfile.appearance}.${styleNote}${historyText}`;
         
         ws.send(JSON.stringify({
           setup: true,
