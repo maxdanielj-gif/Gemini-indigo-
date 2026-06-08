@@ -1173,7 +1173,7 @@ const AIProfileScreen: React.FC = () => {
                                   setLlmProvider(p);
                                   // Reset model to a sensible default for the new provider
                                   if (p === 'claude') setModel('claude-sonnet-4-6');
-                                  else if (p === 'gemini') setModel('gemini-2.0-flash');
+                                  else if (p === 'gemini') setModel('gemini-3.5-flash');
                                 }}
                                 className="w-full p-2 border border-indigo-300 dark:border-indigo-700 rounded-md bg-white dark:bg-indigo-900 text-indigo-900 dark:text-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                             >

@@ -14,6 +14,7 @@ import ImageGeneratorScreen from './screens/ImageGeneratorScreen';
 import GeminiImageScreen from './screens/GeminiImageScreen';
 import JournalScreen from './screens/JournalScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import LiveScreen from './screens/LiveScreen';
 import LoginScreen, { SKIP_AUTH_KEY } from './screens/LoginScreen';
 import ErrorBoundary from './components/ErrorBoundary';
 import MobileDebugger from './components/MobileDebugger';
@@ -81,6 +82,7 @@ const App: React.FC = () => {
                   <Route path="/gallery" element={<GalleryScreen />} />
                   <Route path="/image-generator" element={<ImageGeneratorScreen />} />
                   <Route path="/gemini-image" element={<GeminiImageScreen />} />
+                  <Route path="/live" element={<LiveScreen />} />
                   <Route path="/journal" element={<JournalScreen />} />
                   <Route path="/settings" element={<SettingsScreen />} />
                   <Route path="*" element={<Navigate to="/chat" replace />} />

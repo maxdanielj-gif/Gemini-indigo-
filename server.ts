@@ -11,6 +11,8 @@ import { fileURLToPath } from "url";
 import { Readable } from "stream";
 import Anthropic from "@anthropic-ai/sdk";
 import webpush from "web-push";
+import { WebSocketServer } from "ws";
+import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 dotenv.config();
 
 // ── Global error handlers ─────────────────────────────────────────────────────
@@ -95,7 +97,7 @@ async function callGeminiChat(
 
     if (m.role !== "model") {
       // Find YouTube links in text
-      const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)(?:&\S+)?/g;
+      const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/g;
       let match;
       while ((match = ytRegex.exec(text)) !== null) {
         const url = match[0].startsWith("http") ? match[0] : "https://" + match[0];
@@ -775,8 +777,15 @@ app.post("/api/chat", async (req, res) => {
     ? (messages[messages.length - 1].content || "")
     : "";
 
+  const hasYouTube = Boolean(currentUserMessage.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/));
+
+  let selectedModel = aiProfile.model || "claude-sonnet-4-6";
+  if (hasYouTube && !isGeminiModel(selectedModel)) {
+    // Claude cannot "watch" YouTube, so we transparently use Gemini for this turn
+    selectedModel = "gemini-3.5-flash";
+  }
+  
   const systemPrompt = buildSystemPrompt(aiProfile, userProfile, timeZone, memories, journal, knowledgeBase, currentUserMessage);
-  const selectedModel = aiProfile.model || "claude-sonnet-4-6";
   const useGemini = isGeminiModel(selectedModel);
 
   // ── Gemini path ───────────────────────────────────────────────────────────
@@ -844,7 +853,7 @@ app.post("/api/chat", async (req, res) => {
     if (!useGemini) {
       try {
         console.log("Claude failed, trying Gemini fallback...");
-        const text = await callGeminiChat(systemPrompt, messages, "gemini-2.0-flash", aiProfile.temperature ?? 0.7, geminiKey, attachments);
+        const text = await callGeminiChat(systemPrompt, messages, "gemini-3.5-flash", aiProfile.temperature ?? 0.7, geminiKey, attachments);
         return res.json({ content: text, provider: "gemini-fallback" });
       } catch (geminiErr: any) {
         console.error("Gemini fallback also failed:", geminiErr.message);
@@ -1241,7 +1250,7 @@ async function callActiveProvider(
   const TIMEOUT_MS = 25000;
 
   if (provider === 'gemini') {
-    const task = callGeminiChat('', [{ role: 'user', content: prompt }], 'gemini-2.0-flash', 0.7, keys.geminiKey);
+    const task = callGeminiChat('', [{ role: 'user', content: prompt }], 'gemini-3.5-flash', 0.7, keys.geminiKey);
     const timer = new Promise<string>((_, reject) =>
       setTimeout(() => reject(new Error('Gemini background task timed out after 25 seconds')), TIMEOUT_MS)
     );
@@ -1451,8 +1460,77 @@ async function startServer() {
     app.get("*", (_req, res) => res.sendFile(path.resolve(distPath, "index.html")));
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  const wss = new WebSocketServer({ server, path: "/api/live" });
+  wss.on("connection", async (clientWs, req) => {
+    const url = new URL(req.url || "", `http://${req.headers.host}`);
+    const key = url.searchParams.get("key") || process.env.GEMINI_API_KEY;
+    const voice = url.searchParams.get("voice") || "Aoede";
+
+    if (!key) {
+      clientWs.send(JSON.stringify({ error: "No Gemini API key provided." }));
+      clientWs.close();
+      return;
+    }
+
+    const ai = new GoogleGenAI({ apiKey: key });
+
+    try {
+      const session = await ai.live.connect({
+        model: "gemini-3.5-flash",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: voice as any } }
+          },
+          systemInstruction: "You are a helpful and conversational AI assistant.",
+        },
+        callbacks: {
+          onmessage: (message: LiveServerMessage) => {
+            const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData) {
+              clientWs.send(JSON.stringify({ audio: audioData }));
+            }
+            if (message.serverContent?.interrupted) {
+              clientWs.send(JSON.stringify({ interrupted: true }));
+            }
+          },
+          onclose: () => {
+            clientWs.close();
+          },
+          onerror: (err) => {
+            console.error("Gemini Live Error:", err);
+            clientWs.send(JSON.stringify({ error: "Gemini connection error." }));
+            clientWs.close();
+          }
+        }
+      });
+
+      clientWs.on("message", (data) => {
+        try {
+          const msg = JSON.parse(data.toString());
+          if (msg.audio) {
+            session.sendRealtimeInput({
+              audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" }
+            }).catch(e => console.error("Error sending input:", e));
+          }
+        } catch (e) {
+          console.error("Error parsing message from client:", e);
+        }
+      });
+
+      clientWs.on("close", () => {
+        session.close();
+      });
+
+    } catch (e: any) {
+      console.error("Error establishing Gemini Live connection:", e);
+      clientWs.send(JSON.stringify({ error: e.message || "Failed to connect to Gemini Live." }));
+      clientWs.close();
+    }
   });
 }
 
