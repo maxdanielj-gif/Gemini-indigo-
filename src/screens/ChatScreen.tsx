@@ -57,6 +57,8 @@ const ChatScreen: React.FC = () => {
   
   const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Persisted AudioContext — created on first tap to unlock autoplay on Android
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const handleScroll = () => {
     if (scrollContainerRef.current) {
@@ -270,6 +272,20 @@ const ChatScreen: React.FC = () => {
         speakWithBrowser(text, messageId);
       }
     } else if (aiProfile.voiceProvider === 'gemini' && aiProfile.geminiTtsVoice) {
+      // Unlock AudioContext synchronously during the user-gesture tap.
+      // On Android, autoplay is blocked if .play() is called after an async gap.
+      // Creating/resuming the AudioContext NOW (before the fetch) keeps the
+      // gesture context alive so playback works when the audio arrives.
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+          audioCtxRef.current = new AudioContextClass();
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+          await audioCtxRef.current.resume();
+        }
+      } catch (_) { /* ignore — will fall back below */ }
+
       try {
         const r = await fetch('/api/tts/gemini', {
           method: 'POST',
@@ -282,13 +298,19 @@ const ChatScreen: React.FC = () => {
             geminiKey: geminiApiKey || undefined,
           }),
         });
-        if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Gemini TTS failed'); }
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = () => { onEnd(); URL.revokeObjectURL(url); };
-        audio.onerror = () => { URL.revokeObjectURL(url); speakWithBrowser(text, messageId); };
-        audio.play().catch(() => speakWithBrowser(text, messageId));
+        if (!r.ok) {
+          const errText = await r.text();
+          throw new Error(errText || 'Gemini TTS failed');
+        }
+        const arrayBuf = await r.arrayBuffer();
+        const ctx = audioCtxRef.current;
+        if (!ctx) throw new Error('No AudioContext');
+        const decoded = await ctx.decodeAudioData(arrayBuf);
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.onended = () => onEnd();
+        source.start(0);
       } catch (e: any) {
         addToast({ title: 'Gemini TTS failed', message: e.message || 'Falling back to browser voice.', type: 'error' });
         speakWithBrowser(text, messageId);
