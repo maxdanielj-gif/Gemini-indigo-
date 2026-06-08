@@ -785,8 +785,16 @@ app.post("/api/chat", async (req, res) => {
     selectedModel = "gemini-3.5-flash";
   }
   
-  const systemPrompt = buildSystemPrompt(aiProfile, userProfile, timeZone, memories, journal, knowledgeBase, currentUserMessage);
+  const baseSystemPrompt = buildSystemPrompt(aiProfile, userProfile, timeZone, memories, journal, knowledgeBase, currentUserMessage);
   const useGemini = isGeminiModel(selectedModel);
+
+  // Inject a note so the AI always knows which LLM it's running on and what it can do.
+  const providerNote = useGemini
+    ? `[System: You are currently running on Gemini (Google). You have the ability to view and discuss YouTube videos when the user shares a YouTube link — do not tell the user you cannot view YouTube links.]`
+    : `[System: You are currently running on Claude (Anthropic). You cannot view YouTube videos or browse the internet.]`;
+  const systemPrompt = `${baseSystemPrompt}
+
+${providerNote}`;
 
   // ── Gemini path ───────────────────────────────────────────────────────────
   if (useGemini) {
