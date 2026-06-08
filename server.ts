@@ -26,8 +26,11 @@ process.on("uncaughtException", (error: any) => {
 
 console.log(`Server starting in ${process.env.NODE_ENV || "development"} mode`);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Safe __dirname resolution that works in both ESM and CJS build outputs
+const __filename = typeof import.meta !== "undefined" && import.meta.url
+  ? fileURLToPath(import.meta.url)
+  : __filename ?? "";
+const __dirname = __filename ? path.dirname(__filename) : process.cwd();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
