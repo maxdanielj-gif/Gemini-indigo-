@@ -61,10 +61,12 @@ class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
             {this.state.error && (
-              <details className="mt-8 text-left">
-                <summary className="text-xs text-indigo-400 dark:text-indigo-600 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">Error Details</summary>
-                <pre className="mt-2 p-4 bg-indigo-50 dark:bg-indigo-950 rounded-lg text-[10px] overflow-auto max-h-40 text-indigo-600 dark:text-indigo-400">
+              <details open className="mt-8 text-left">
+                <summary className="text-xs font-semibold text-red-600 cursor-pointer">Error Details (Please copy this to the agent):</summary>
+                <pre className="mt-2 p-4 bg-indigo-50 dark:bg-indigo-950 rounded-lg text-xs overflow-auto max-h-60 text-red-600 dark:text-red-400 font-mono break-all whitespace-pre-wrap">
                   {this.state.error.toString()}
+                  {'\n'}
+                  {this.state.error.stack && this.state.error.stack}
                 </pre>
               </details>
             )}

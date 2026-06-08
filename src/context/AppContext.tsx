@@ -605,7 +605,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!isSuccessfullyLoaded) return; // Don't save before initial load is complete
 
     try {
-      const data: AppState = {
+      const data: any = {
           aiProfile,
           savedPersonas,
           userProfile,

@@ -20,9 +20,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 import MobileDebugger from './components/MobileDebugger';
 
 const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, authLoading } = useApp();
+  const { currentUser, authLoading, firebaseApiKey } = useApp();
   const [skipped, setSkipped] = useState(() => localStorage.getItem(SKIP_AUTH_KEY) === 'true');
   const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Check if we have any firebase config. If not, bypass login screen
+  const hasFirebaseConfig = !!(firebaseApiKey || import.meta.env.VITE_FIREBASE_API_KEY);
 
   if (authLoading) {
     return (
@@ -35,8 +38,8 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  // Not signed in and didn't skip → show login screen
-  if (!currentUser && !skipped) {
+  // Not signed in, didn't skip, and we have firebase config -> show login screen
+  if (!currentUser && !skipped && hasFirebaseConfig) {
     return <LoginScreen />;
   }
 
@@ -48,7 +51,7 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <>
       {/* "Skipped auth" banner — shown until signed in or dismissed */}
-      {!currentUser && skipped && !bannerDismissed && (
+      {!currentUser && skipped && hasFirebaseConfig && !bannerDismissed && (
         <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-3 bg-amber-500 text-white text-xs px-4 py-2">
           <span>You're not signed in — cloud backup &amp; sync are disabled.</span>
           <div className="flex items-center gap-3 flex-shrink-0">

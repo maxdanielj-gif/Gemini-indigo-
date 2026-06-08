@@ -1,13 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 
 const SKIP_AUTH_KEY = 'indigo_skip_auth';
 
 const LoginScreen: React.FC = () => {
-  const { signInWithGoogle, firebaseProjectId } = useApp();
+  const { signInWithGoogle, firebaseProjectId, firebaseApiKey, firebaseAuthDomain } = useApp();
   const [isLoading, setIsLoading] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  // Diagnostics State
+  const [logs, setLogs] = useState<{time: string; msg: string; type?: 'info' | 'error' | 'success'}[]>([]);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  const addLog = (msg: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setLogs(prev => [...prev, { time: new Date().toISOString().split('T')[1].split('.')[0], msg, type }]);
+  };
+
+  useEffect(() => {
+    addLog(`LoginScreen mounted. Mode: ${import.meta.env.MODE}`);
+    addLog(`Network status: ${navigator.onLine ? 'Online' : 'Offline'}`, navigator.onLine ? 'success' : 'error');
+    
+    // Check config
+    const apiKey = firebaseApiKey || import.meta.env.VITE_FIREBASE_API_KEY;
+    const project = firebaseProjectId || import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const domain = firebaseAuthDomain || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+    addLog(`Firebase API Key: ${apiKey ? 'Present' : 'Missing'}`);
+    addLog(`Firebase Auth Domain: ${domain || 'Missing'}`);
+    addLog(`Firebase Project ID: ${project || 'Missing'}`);
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      addLog('Network status changed: Online', 'success');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      addLog('Network status changed: Offline', 'error');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [firebaseApiKey, firebaseProjectId, firebaseAuthDomain]);
 
   const projectId = firebaseProjectId || import.meta.env.VITE_FIREBASE_PROJECT_ID || null;
   const hostname  = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
@@ -16,9 +54,24 @@ const LoginScreen: React.FC = () => {
     setIsLoading(true);
     setErrorCode(null);
     setErrorMsg(null);
+    addLog('User initiated sign in flow...');
+    
+    if (!isOnline) {
+      addLog('Cannot sign in: device is offline', 'error');
+      setErrorMsg('Cannot sign in: device is offline');
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      addLog('Calling apps signInWithGoogle...');
       await signInWithGoogle();
+      addLog('signInWithGoogle completed successfully', 'success');
     } catch (e: any) {
+      addLog(`Sign in threw error: ${e.name}: ${e.message}`, 'error');
+      addLog(`Error Code: ${e.code || 'N/A'}`);
+      addLog(`Full Auth Error Object: ${JSON.stringify(e, Object.getOwnPropertyNames(e))}`, 'error');
+      
       const code = e?.code as string | undefined;
       setErrorCode(code || null);
       if (code === 'auth/popup-closed-by-user') {
@@ -28,6 +81,7 @@ const LoginScreen: React.FC = () => {
       }
     } finally {
       setIsLoading(false);
+      addLog('Sign in flow finished');
     }
   };
 
@@ -56,8 +110,13 @@ const LoginScreen: React.FC = () => {
         </div>
 
         {/* Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">Welcome back</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 relative overflow-hidden">
+          {/* Iframe Warning Banner */}
+          <div className="absolute top-0 inset-x-0 bg-amber-500 text-white text-xs py-1.5 px-4 text-center font-medium">
+            Login loop? <a href={window.location.href} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-100">Click here to open app in a new tab</a>
+          </div>
+
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1 mt-4">Welcome back</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Sign in to access your data and cloud sync.</p>
 
           {/* Generic error */}
@@ -125,6 +184,43 @@ const LoginScreen: React.FC = () => {
               </button>
             </p>
           )}
+        </div>
+
+        {/* Diagnostics Panel */}
+        <div className="mt-4">
+          <details className="group border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800 text-left text-xs">
+            <summary className="px-4 py-3 cursor-pointer font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center justify-between transition-colors">
+              <span>Login Diagnostics Tool</span>
+              <svg className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            
+            <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900/50 max-h-64 overflow-y-auto">
+              <div className="mb-3 pb-3 border-b border-gray-200 dark:border-gray-700 space-y-1 text-gray-600 dark:text-gray-400 font-mono">
+                <div className="flex justify-between">
+                  <span>Network:</span> 
+                  <span className={isOnline ? "text-green-600" : "text-red-500"}>{isOnline ? 'Online' : 'Offline'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Host:</span> 
+                  <span>{hostname}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Project ID:</span> 
+                  <span>{projectId || 'Not set'}</span>
+                </div>
+              </div>
+              <div className="space-y-2 font-mono break-all">
+                {logs.map((log, i) => (
+                  <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-500' : log.type === 'success' ? 'text-green-500' : 'text-gray-600 dark:text-gray-400'}`}>
+                    <span className="opacity-50 shrink-0">[{log.time}]</span>
+                    <span>{log.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </details>
         </div>
 
         <p className="mt-6 text-center text-xs text-gray-400 dark:text-gray-500">

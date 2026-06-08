@@ -780,8 +780,8 @@ app.post("/api/chat", async (req, res) => {
   const hasYouTube = Boolean(currentUserMessage.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/));
 
   let selectedModel = aiProfile.model || "claude-sonnet-4-6";
-  if (hasYouTube && !isGeminiModel(selectedModel)) {
-    // Claude cannot "watch" YouTube, so we transparently use Gemini for this turn
+  if (hasYouTube) {
+    // Ensure we use Gemini for YouTube shorts/videos to prevent Claude fallback
     selectedModel = "gemini-3.5-flash";
   }
   
@@ -1466,71 +1466,86 @@ async function startServer() {
 
   const wss = new WebSocketServer({ server, path: "/api/live" });
   wss.on("connection", async (clientWs, req) => {
-    const url = new URL(req.url || "", `http://${req.headers.host}`);
-    const key = url.searchParams.get("key") || process.env.GEMINI_API_KEY;
-    const voice = url.searchParams.get("voice") || "Aoede";
+    let session: any = null;
+    let ai: any = null;
 
-    if (!key) {
-      clientWs.send(JSON.stringify({ error: "No Gemini API key provided." }));
-      clientWs.close();
-      return;
-    }
+    clientWs.on("message", async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
 
-    const ai = new GoogleGenAI({ apiKey: key });
-
-    try {
-      const session = await ai.live.connect({
-        model: "gemini-3.5-flash",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: voice as any } }
-          },
-          systemInstruction: "You are a helpful and conversational AI assistant.",
-        },
-        callbacks: {
-          onmessage: (message: LiveServerMessage) => {
-            const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              clientWs.send(JSON.stringify({ audio: audioData }));
-            }
-            if (message.serverContent?.interrupted) {
-              clientWs.send(JSON.stringify({ interrupted: true }));
-            }
-          },
-          onclose: () => {
+        // First message must be setup
+        if (msg.setup) {
+          const key = msg.key || process.env.GEMINI_API_KEY;
+          const voice = msg.voice || "Aoede";
+          const systemInstruction = msg.systemInstruction || "You are a helpful and conversational AI assistant.";
+          
+          if (!key) {
+            clientWs.send(JSON.stringify({ error: "No Gemini API key provided." }));
             clientWs.close();
-          },
-          onerror: (err) => {
-            console.error("Gemini Live Error:", err);
-            clientWs.send(JSON.stringify({ error: "Gemini connection error." }));
-            clientWs.close();
+            return;
           }
-        }
-      });
 
-      clientWs.on("message", (data) => {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.audio) {
+          ai = new GoogleGenAI({ apiKey: key });
+
+          try {
+            session = await ai.live.connect({
+              model: "gemini-3.1-flash-live-preview",
+              config: {
+                responseModalities: [Modality.AUDIO, Modality.TEXT],
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: voice as any } }
+                },
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+              },
+              callbacks: {
+                onmessage: (message: any) => {
+                  if (message.serverContent?.modelTurn?.parts) {
+                     for (const part of message.serverContent.modelTurn.parts) {
+                       if (part.text) {
+                         clientWs.send(JSON.stringify({ text: part.text, role: "model" }));
+                       }
+                     }
+                  }
+                  const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+                  if (audioData) {
+                    clientWs.send(JSON.stringify({ audio: audioData }));
+                  }
+                  if (message.serverContent?.interrupted) {
+                    clientWs.send(JSON.stringify({ interrupted: true }));
+                  }
+                },
+                onclose: (e: any) => {
+                  console.log("Gemini Live closed:", e);
+                  clientWs.close();
+                },
+                onerror: (err: any) => {
+                  console.error("Gemini Live Error:", err);
+                  clientWs.send(JSON.stringify({ error: "Gemini connection error." }));
+                  clientWs.close();
+                }
+              }
+            });
+            clientWs.send(JSON.stringify({ connected: true }));
+          } catch (e: any) {
+             console.error("Gemini Live Setup Error:", e);
+             clientWs.send(JSON.stringify({ error: e.message || "Failed to connect to Gemini Live." }));
+             clientWs.close();
+          }
+        } else if (msg.audio) {
+          if (session) {
             session.sendRealtimeInput({
               audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" }
-            }).catch(e => console.error("Error sending input:", e));
+            });
           }
-        } catch (e) {
-          console.error("Error parsing message from client:", e);
         }
-      });
+      } catch (e) {
+        console.error("Error parsing message from client:", e);
+      }
+    });
 
-      clientWs.on("close", () => {
-        session.close();
-      });
-
-    } catch (e: any) {
-      console.error("Error establishing Gemini Live connection:", e);
-      clientWs.send(JSON.stringify({ error: e.message || "Failed to connect to Gemini Live." }));
-      clientWs.close();
-    }
+    clientWs.on("close", () => {
+      if (session) session.close();
+    });
   });
 }
 
