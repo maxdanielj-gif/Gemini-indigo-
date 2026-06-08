@@ -1491,7 +1491,10 @@ async function startServer() {
             session = await ai.live.connect({
               model: "gemini-3.1-flash-live-preview",
               config: {
-                responseModalities: [Modality.AUDIO, Modality.TEXT],
+                // AUDIO only — the API does not support AUDIO + TEXT simultaneously
+                responseModalities: [Modality.AUDIO],
+                outputAudioTranscription: {},  // Gemini's words → text
+                inputTranscription: {},           // User's words → text
                 speechConfig: {
                   voiceConfig: { prebuiltVoiceConfig: { voiceName: voice as any } }
                 },
@@ -1499,18 +1502,29 @@ async function startServer() {
               },
               callbacks: {
                 onmessage: (message: any) => {
-                  if (message.serverContent?.modelTurn?.parts) {
-                     for (const part of message.serverContent.modelTurn.parts) {
-                       if (part.text) {
-                         clientWs.send(JSON.stringify({ text: part.text, role: "model" }));
-                       }
-                     }
+                  const content = message.serverContent;
+                  if (!content) return;
+
+                  // Audio chunks live in modelTurn.parts[].inlineData
+                  if (content.modelTurn?.parts) {
+                    for (const part of content.modelTurn.parts) {
+                      if (part.inlineData?.data) {
+                        clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
+                      }
+                    }
                   }
-                  const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-                  if (audioData) {
-                    clientWs.send(JSON.stringify({ audio: audioData }));
+
+                  // Gemini's words
+                  if (content.outputTranscription?.text) {
+                    clientWs.send(JSON.stringify({ text: content.outputTranscription.text, role: "model" }));
                   }
-                  if (message.serverContent?.interrupted) {
+
+                  // User's spoken words
+                  if (content.inputTranscription?.text) {
+                    clientWs.send(JSON.stringify({ text: content.inputTranscription.text, role: "user" }));
+                  }
+
+                  if (content.interrupted) {
                     clientWs.send(JSON.stringify({ interrupted: true }));
                   }
                 },
