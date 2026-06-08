@@ -397,17 +397,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return importantMemories.sort((a, b) => a.timestamp - b.timestamp).slice(0, MAX_MEMORIES);
     }
 
-    // Sort non-important memories: by strength (ascending), then by lastAccessed (ascending - oldest first)
+    // Sort for pruning: weakest first, then oldest first among equal strength.
+    // We want to DISCARD from the front, so slice from the end to keep the best ones.
     nonImportantMemories.sort((a, b) => {
       if (a.strength !== b.strength) {
-        return a.strength - b.strength;
+        return a.strength - b.strength; // weakest first → pruned first
       }
-      return a.lastAccessed - b.lastAccessed; // Prioritize older/less accessed for pruning
+      return a.lastAccessed - b.lastAccessed; // oldest first → pruned first
     });
 
     // Determine how many non-important memories to keep
     const numToKeep = MAX_MEMORIES - importantMemories.length;
-    let keptNonImportantMemories = nonImportantMemories.slice(0, numToKeep);
+    // slice from the END to keep the strongest/most-recent memories
+    let keptNonImportantMemories = nonImportantMemories.slice(-numToKeep);
 
     // Combine and return
     return [...importantMemories, ...keptNonImportantMemories];
