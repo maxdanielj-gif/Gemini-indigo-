@@ -1,6 +1,0 @@
-{
-  "name": "indigo AI",
-  "description": "Multi-model AI assistant with text, audio, image and live voice capabilities.",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
