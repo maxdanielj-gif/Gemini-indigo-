@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import zlib from "zlib";
-import { fileURLToPath } from "url";
+
 import { Readable } from "stream";
 import Anthropic from "@anthropic-ai/sdk";
 import webpush from "web-push";
@@ -26,11 +26,8 @@ process.on("uncaughtException", (error: any) => {
 
 console.log(`Server starting in ${process.env.NODE_ENV || "development"} mode`);
 
-// Safe __dirname resolution that works in both ESM and CJS build outputs
-const __filename = typeof import.meta !== "undefined" && import.meta.url
-  ? fileURLToPath(import.meta.url)
-  : __filename ?? "";
-const __dirname = __filename ? path.dirname(__filename) : process.cwd();
+// CJS-safe directory resolution (works after esbuild compiles to .cjs)
+const __dirname = path.dirname(process.argv[1] ?? process.cwd());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
