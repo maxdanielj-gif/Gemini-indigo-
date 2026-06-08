@@ -903,13 +903,17 @@ app.post("/api/tts/gemini", express.json(), async (req, res) => {
       ? `${stylePrompt.trim()}\n\n${text}`
       : text;
 
+    // Prefix with "Say:" so the TTS model knows to speak, not reply as text.
+    // Without an explicit instruction, the model may return text with no audio.
+    const ttsText = `Say: ${userText}`;
+
     const requestBody: any = {
-      contents: [{ parts: [{ text: userText }] }],
+      contents: [{ parts: [{ text: ttsText }] }],
       generationConfig: {
-        response_modalities: ["AUDIO"],
-        speech_config: {
-          voice_config: {
-            prebuilt_voice_config: { voice_name: voiceName },
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
           },
         },
       },
