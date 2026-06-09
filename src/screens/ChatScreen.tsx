@@ -1172,10 +1172,7 @@ const ChatScreen: React.FC = () => {
                  placeholder={`Message ${aiProfile.name}...`}
                  onChange={(e) => setInput(e.target.value)}
                  onKeyDown={(e) => {
-                     if (e.key === 'Enter' && !e.shiftKey) {
-                         e.preventDefault();
-                         handleSend();
-                     }
+                     // Enter just adds a new line — send only happens via the send button
                  }}
                  className="w-full bg-transparent py-3 px-2 text-indigo-900 dark:text-indigo-100 placeholder-indigo-700 dark:placeholder-indigo-300 resize-none max-h-48 overflow-y-auto focus:outline-none text-sm md:text-base leading-relaxed custom-scrollbar"
                  rows={1}
