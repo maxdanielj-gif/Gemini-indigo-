@@ -813,7 +813,10 @@ ${providerNote}`;
   try {
     const client = getAnthropicClient(clientKey);
 
-    const claudeMessages: Anthropic.MessageParam[] = messages.map((m: any) => ({
+    // Filter out any messages with empty content — Claude rejects these with a 400
+  const claudeMessages: Anthropic.MessageParam[] = messages
+    .filter((m: any) => typeof m.content === 'string' && m.content.trim().length > 0)
+    .map((m: any) => ({
       role: m.role === "model" ? "assistant" : "user",
       content: m.content,
     }));
