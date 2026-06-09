@@ -144,6 +144,7 @@ interface AppContextType extends AppState {
     storageBucket?: string | null; appId?: string | null;
     messagingSenderId?: string | null;
   }) => void;
+  userLocation: { lat: number; lon: number; label: string } | null;
   isSuccessfullyLoaded: boolean;
   isLoaded: boolean;
   lastInteractionTime: number;
@@ -311,6 +312,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return storedId;
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number; label: string } | null>(null);
   const [isSuccessfullyLoaded, setIsSuccessfullyLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showResetOption, setShowResetOption] = useState(false);
@@ -416,6 +418,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Load from IndexedDB on mount
+  // ── Geolocation: request once on mount ──────────────────────────────────
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        try {
+          const geo = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const geoData = await geo.json();
+          const city =
+            geoData.address?.city ||
+            geoData.address?.town ||
+            geoData.address?.village ||
+            geoData.address?.county ||
+            'Unknown location';
+          const region = geoData.address?.state || geoData.address?.country || '';
+          const label = region ? `${city}, ${region}` : city;
+          setUserLocation({ lat, lon, label });
+        } catch {
+          setUserLocation({ lat, lon, label: `${lat.toFixed(2)}, ${lon.toFixed(2)}` });
+        }
+      },
+      () => { /* permission denied — silently skip */ }
+    );
+  }, []);
+
+
   useEffect(() => {
     const loadData = async () => {
         console.log("loadData started", Date.now());
@@ -1730,6 +1762,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       elevenLabsApiKey, setElevenLabsApiKey,
       geminiApiKey, setGeminiApiKey,
       wavespeedApiKey, setWavespeedApiKey,
+      userLocation,
       isLoaded, isSuccessfullyLoaded, lastInteractionTime, setLastInteractionTime,
       userId, setUserId, isSyncing, setIsSyncing,
       exportGalleryData, exportGalleryChunks, importGalleryData, importGalleryChunks, syncGalleryToCloud, restoreGalleryFromCloud,
