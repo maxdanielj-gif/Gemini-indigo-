@@ -26,6 +26,31 @@ process.on("uncaughtException", (error: any) => {
 
 console.log(`Server starting in ${process.env.NODE_ENV || "development"} mode`);
 
+// ── Weather helper (Open-Meteo, no API key required) ────────────────────────
+const WMO_CODES: Record<number, string> = {
+  0: 'clear sky', 1: 'mainly clear', 2: 'partly cloudy', 3: 'overcast',
+  45: 'foggy', 48: 'icy fog',
+  51: 'light drizzle', 53: 'moderate drizzle', 55: 'heavy drizzle',
+  61: 'light rain', 63: 'moderate rain', 65: 'heavy rain',
+  71: 'light snow', 73: 'moderate snow', 75: 'heavy snow',
+  80: 'light showers', 81: 'moderate showers', 82: 'heavy showers',
+  95: 'thunderstorm', 96: 'thunderstorm with hail',
+};
+
+async function fetchWeather(lat: number, lon: number): Promise<string> {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`;
+    const res = await fetch(url);
+    if (!res.ok) return '';
+    const data = await res.json() as any;
+    const c = data.current;
+    const condition = WMO_CODES[c.weather_code as number] ?? 'unknown conditions';
+    return `${Math.round(c.temperature_2m)}°F, ${condition}, ${Math.round(c.wind_speed_10m)} mph wind, ${c.relative_humidity_2m}% humidity`;
+  } catch {
+    return '';
+  }
+}
+
 // CJS-safe directory resolution (works after esbuild compiles to .cjs)
 const __dirname = path.dirname(process.argv[1] ?? process.cwd());
 
@@ -789,13 +814,22 @@ app.post("/api/chat", async (req, res) => {
   const baseSystemPrompt = buildSystemPrompt(aiProfile, userProfile, timeZone, memories, journal, knowledgeBase, currentUserMessage);
   const useGemini = isGeminiModel(selectedModel);
 
-  // Inject a note so the AI always knows which LLM it's running on and what it can do.
+  // Provider note — always tells the AI what LLM it's running on
   const providerNote = useGemini
     ? `[System: You are currently running on Gemini (Google). You have the ability to view and discuss YouTube videos when the user shares a YouTube link — do not tell the user you cannot view YouTube links.]`
     : `[System: You are currently running on Claude (Anthropic). You cannot view YouTube videos or browse the internet.]`;
-  const systemPrompt = `${baseSystemPrompt}
 
-${providerNote}`;
+  // Location + live weather — fetched from Open-Meteo if the client sent coordinates
+  const userLocation = req.body.userLocation as { lat: number; lon: number; label: string } | undefined;
+  let locationNote = '';
+  if (userLocation?.lat && userLocation?.lon) {
+    const weather = await fetchWeather(userLocation.lat, userLocation.lon);
+    locationNote = weather
+      ? `[System: The user is currently located in ${userLocation.label}. Current weather: ${weather}.]`
+      : `[System: The user is currently located in ${userLocation.label}.]`;
+  }
+
+  const systemPrompt = [baseSystemPrompt, providerNote, locationNote].filter(Boolean).join('\n\n');
 
   // ── Gemini path ───────────────────────────────────────────────────────────
   if (useGemini) {
