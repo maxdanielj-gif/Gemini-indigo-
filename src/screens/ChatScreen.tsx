@@ -59,6 +59,9 @@ const ChatScreen: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Persisted AudioContext — created on first tap to unlock autoplay on Android
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Synchronous re-entry lock. isLoading is React state and updates too late to
+  // block a second send fired in the same tick, so we use a ref that flips instantly.
+  const isSendingRef = useRef(false);
 
   const handleScroll = () => {
     if (scrollContainerRef.current) {
@@ -379,37 +382,45 @@ const ChatScreen: React.FC = () => {
 
   const handleSend = async (overrideInput?: string) => {
     const currentInput = overrideInput !== undefined ? overrideInput : input;
-    if ((!currentInput.trim() && attachments.length === 0) || isLoading) return;
+    // Block empty sends, and block re-entry using the synchronous ref (not isLoading,
+    // which lags a render behind and lets a same-tick double-fire slip through).
+    if ((!currentInput.trim() && attachments.length === 0) || isLoading || isSendingRef.current) return;
+    isSendingRef.current = true;
 
-    // Auto-save images to gallery
-    attachments.forEach(att => {
-        if (att.type === 'image') {
-            addToGallery({
-                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                type: 'uploaded',
-                mediaType: 'image',
-                url: att.content,
-                timestamp: Date.now()
-            });
-        }
-    });
+    try {
+      // Auto-save images to gallery
+      attachments.forEach(att => {
+          if (att.type === 'image') {
+              addToGallery({
+                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  type: 'uploaded',
+                  mediaType: 'image',
+                  url: att.content,
+                  timestamp: Date.now()
+              });
+          }
+      });
 
-    const userMsgId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const userMessage = {
-      id: userMsgId,
-      role: 'user' as const,
-      content: currentInput,
-      timestamp: Date.now(),
-      attachments: [...attachments],
-    };
+      const userMsgId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const userMessage = {
+        id: userMsgId,
+        role: 'user' as const,
+        content: currentInput,
+        timestamp: Date.now(),
+        attachments: [...attachments],
+      };
 
-    addChatMessage(userMessage);
-    setLastInteractionTime(Date.now());
-    setInput('');
-    setAttachments([]);
-    setIsLoading(true);
+      addChatMessage(userMessage);
+      setLastInteractionTime(Date.now());
+      setInput('');
+      setAttachments([]);
+      setIsLoading(true);
 
-    await generateResponse(chatHistory, userMessage);
+      await generateResponse(chatHistory, userMessage);
+    } finally {
+      // Release the lock once the full send (including the awaited response) finishes.
+      isSendingRef.current = false;
+    }
   };
 
   const generateResponse = async (history: typeof chatHistory, currentMessage: typeof chatHistory[0], overrideAIProfile?: typeof aiProfile) => {
