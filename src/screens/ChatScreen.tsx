@@ -125,7 +125,7 @@ const ChatScreen: React.FC = () => {
       const file = e.target.files[0];
       
       try {
-        const processedFiles = await processFile(file, file.name, apiKey || undefined);
+        const processedFiles = await processFile(file, file.name, anthropicApiKey || undefined);
         
         for (const processed of processedFiles) {
           setAttachments(prev => [...prev, {
