@@ -419,7 +419,12 @@ const ChatScreen: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          messages: [...history.slice(-20), currentMessage].map(m => ({
+          // Build message list from history (excluding the current message if it
+          // already landed in state) then append currentMessage exactly once.
+          messages: [
+            ...history.slice(-20).filter(m => m.id !== currentMessage.id),
+            currentMessage,
+          ].map(m => ({
             role: m.role,
             content: m.content,
           })),
