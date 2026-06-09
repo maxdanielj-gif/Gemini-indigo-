@@ -156,12 +156,12 @@ const LiveScreen: React.FC = () => {
              audioQueueRef.current = [];
              isPlayingRef.current = false;
              nextStartTimeRef.current = 0;
-             if (userTranscriptRef.current) {
-               addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current, timestamp: Date.now() });
+             if (userTranscriptRef.current.trim()) {
+               addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current.trim(), timestamp: Date.now() });
                userTranscriptRef.current = '';
              }
-             if (liveTranscriptRef.current) {
-               addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current, timestamp: Date.now() });
+             if (liveTranscriptRef.current.trim()) {
+               addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current.trim(), timestamp: Date.now() });
                liveTranscriptRef.current = '';
              }
           }
@@ -173,12 +173,12 @@ const LiveScreen: React.FC = () => {
       ws.onclose = () => {
         setIsConnected(false);
         stopRecording();
-        if (userTranscriptRef.current) {
-          addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current, timestamp: Date.now() });
+        if (userTranscriptRef.current.trim()) {
+          addChatMessage({ id: Date.now().toString(), role: 'user', content: userTranscriptRef.current.trim(), timestamp: Date.now() });
           userTranscriptRef.current = '';
         }
-        if (liveTranscriptRef.current) {
-          addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current, timestamp: Date.now() });
+        if (liveTranscriptRef.current.trim()) {
+          addChatMessage({ id: Date.now().toString(), role: 'model', content: liveTranscriptRef.current.trim(), timestamp: Date.now() });
           liveTranscriptRef.current = '';
         }
       };
