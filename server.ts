@@ -119,7 +119,8 @@ async function callGeminiChat(
             const raw = att.content.includes(",") ? att.content.split(",")[1] : att.content;
             parts.push({ inlineData: { data: raw, mimeType: "application/pdf" } });
           } else {
-             parts.push({ text: `[Attachment: ${att.name}]\n${att.content}` });
+             const safeContent1 = att.content?.trim() || '[no text could be extracted]';
+             parts.push({ text: `[Attachment: ${att.name}]\n${safeContent1}` });
           }
         }
       }
@@ -833,7 +834,8 @@ ${providerNote}`;
             const raw = att.content.includes(",") ? att.content.split(",")[1] : att.content;
             parts.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: raw } } as any);
           } else {
-            parts.push({ type: "text", text: `[Attachment: ${att.name}]\n${att.content}` });
+            const safeContent = att.content?.trim() || '[no text could be extracted]';
+            parts.push({ type: "text", text: `[Attachment: ${att.name}]\n${safeContent}` });
           }
         }
         parts.push({ type: "text", text: typeof last.content === "string" ? last.content : "" });
